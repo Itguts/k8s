@@ -1,0 +1,305 @@
+--Create AKS cluster from wizard
+--Launch Azure cloud CLI-map it to a storage account
+--or on local- az login
+>> az aks get-credentials --resource-group aks_rsg --name akscluster
+>> kubectl get nodes
+>> kubectl get pods
+>> kubectl get deployment
+>> kubectl get services
+----Now deploy --
+>> upload this file on azure cli-azure-vote-all-in-one-redis.yaml
+>>kubectl apply -f azure-vote-all-in-one-redis.yaml
+>>kubectl get pods
+>>kubectl get services
+>> Use public Ip of load babalnce (front end)
+---------Create ACR using powershell------------
+New-AzResourceGroup -Name acr-rsg -Location EastUs
+$registry = New-AzContainerRegistry -ResourceGroupName "acr-rsg" -Name "itgutsacr" -EnableAdminUser -Sku Basic
+$creds = Get-AzContainerRegistryCredential -Registry $registry
+$creds.Password | docker login $registry.LoginServer -u $creds.Username --password-stdin
+----docker pull hellow-world:lates
+>tag this image as per acr created
+>>docker image tag itgutsacr.azureacr.io/hello-world:v1
+>> docker push itgutsacr.azureacr.io/hello-world:v1
+--go to ACR on portal and check the image
+>---------------Now attach this acr to aks-------------------------
+--Run image from acr as pod
+>> kubectl run hw --image itgutsacr.azureacr.io/hello-world:v1  
+>> kubectl get pods (Error in pulling the image)
+--It will throw error. need to attach this acr with aks
+>> az aks update -n akscluster -g aks_rsg --attach-acr itgutsacr
+>>kubectl run hw --image itgutsacr.azureacr.io/hello-world:v1
+--delete the deployment
+>> kubectl delete deployment h1 h1 hw2..
+>>--Import image from docler hub to acr
+>> az acr import -n itgutsacr --source docker.io/library/nginx:latest --image nginx:v1
+--get acr repo list
+>> az acr repository list -n itgutsacr
+---Create a deployment file for nginx---
+>> vi aks-nginx.yaml
+--paste the content and type :wq enter
+--------------------Now apply this deployment in aks-----------------
+>>kubectl apply -f aks-nginx.yaml
+>>kubectl get pods
+
+---------------------------Now Access AKS------------------
+>>delete the .kube/config file first
+>>ls --all
+>> rm -rf .kube/
+>>az aks get-credentials --resource-group aks_rsg --name akscluster
+>> cd ./.kube/
+>>cat config
+-----onLocal--------
+>>az login
+>>az aks get-credentials --resource-group aks_rsg --name akscluster
+----------or------Powershell window---------
+>>Connect-AzAccount
+>>Import-AzAksCredential --ResourceGroupName aks_rsg --name akscluster
+--.kube folder get created in the user folder
+>>kubectl get pods
+----------get the context and clusters -------
+>> kubectl cofig get-clusters
+>>kubectl config get-context
+-----------------Service Account--------
+>>kubectl get sa
+>>kubectl describe sa default
+>>kubectl get secrets
+>>kubectl describe pod
+---you can see mount secret and tokens-------
+-----------get inside the pod----
+>>kubectl exec -it azure-vote-back-6fcdc5cbd5-7chlz sh
+>>cat /var/run/secrets/kubernetes.io/serviceaccount/token  (mount path copied from pod describe)
+-------------------------------------------AKS RBAC-----------------
+----Kubernetes has roles repository but no identity management system-------
+>>kubectl get nodes
+>>kubectl config view
+>>kubectl get clusterrolebindings
+>>kubectl describe clusterrolebinding cluster-admin
+>>kubectl get namespaces
+>>kubectl get roles -n kube-system
+>>kubectl api-services --namespaced=true
+>>kubectl api-services --namespaced=false
+---------------------https://learn.microsoft.com/en-us/azure/aks/azure-ad-integration-cli-------------------------
+---------------https://www.youtube.com/watch?v=OCqNMD3pMYk&list=PL2rqVLfBxq_jK6zRibdPoQo4fQDarisNB&index=18-----------
+--------------Create AKS cluster enabled with Azure AD-------Before this we need to create server and client app in Azure AD-----
+---Azure AD is based on openId connect and uses oauth2.0 to auth--------
+----User when hits az aks get-credentials.... ,-> req goes to Azure AD--> it authenticates and send to AKS with the roles registered to him---
+1. go to portal create an app reg (aksazureadserver, uri- https://aksazureadserver)
+2. Go maanifest file of this app, set 'All' to groupMembershipCliams -->save
+3. Create a secret and copy in notepad
+4.Go to ApI permission-> add permission-> Ms Graph ->Delegated Perm -> Directory (readall),User(userread) --> App permission -Directory  (read all) --> Add Permission
+5. Grant Admin consent for default Directory
+6. Expose an API--> Add a scope
+7.copy the applicationid from overview
+Now create new app reg for client
+1. Create an app reg (aksazureadclient, uri:- https://aksazureadclient)
+2. API permission- MyAPI -> Select AksAzureADServer (Server which ee have created in forst place)
+3. Select checkbox and Add permission
+4. Grant admin consent..
+5. Select Authjentication -> Treat app as a public client-> Yes--> save
+6. copy the application id of this app and tenant id and save
+---Now create aks cluster with azure ad----------
+--azure cli
+> az aks create \
+> --resource-group aks-rsg \
+>--generate-ssh-keys \
+>add-server-app-id serverclientid \
+>aad-server-app-secret serversecret \
+>aad-client-app-id clientclientid \
+>aad-tenant-id teneantid
+-------------------
+az aks create \
+    --resource-group myResourceGroup \
+    --name $aksname \
+    --node-count 1 \
+    --generate-ssh-keys \
+    --aad-server-app-id $serverApplicationId \
+    --aad-server-app-secret $serverApplicationSecret \
+    --aad-client-app-id $clientApplicationId \
+    --aad-tenant-id $tenantId
+    -----------------------------------------------
+Now create an user in the azure ad , note its userPrincipalName_or_objectId, email
+Now Login to aks as admin, create a yaml file for clusterrolebindings and add that user
+---------------------------------------------------
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: contoso-cluster-admins
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+- apiGroup: rbac.authorization.k8s.io
+  kind: User
+  name: userPrincipalName_or_objectId
+
+  -------------apply kubectl--------------------------
+Now relogin (az aks get-credentials),> k get pods -> a prompt will be there, login as user and enjoy
+
+------------------Network Policy-----------------------
+1. Create AKS from portal (Create VNET, cluster subnet before hand)--------https://www.youtube.com/redirect?event=video_description&redir_token=QUFFLUhqa2tRbTlCaEZjYmtibEI0am5BeFZiaXoxX2VCd3xBQ3Jtc0tuQkxsci1JZ0swN3BSTlFmZUMzVkZnWWdxTllmR3lwVFZYbWpXNGRSZnBoV2hVcFhTZ00wYWdZbXRIWlJra3J5RnVFMjhyaFFpTTRod2VLZFA4S2c2XzJXNnZEcFV5VXdEbmR0MFMwdXg2VGM0YzVocw&q=https%3A%2F%2Fdocs.microsoft.com%2Fen-us%2Fazure%2Faks%2Fuse-network-policies&v=1Gcgx62gx9A
+Details:-
+N/w config - Advance
+K8s service address range- 10.0.0.0/16
+K8s DNS service IP address- 10.0.0.10
+Docker Bridge add:- 172.17.0.1/16
+Pvt cluster-Disabled
+N/w policy- Azure
+Http App Routing- No
+
+2. Azure cli
+>az aks get-credentials --resource-group aks_rsg --name akscluster
+3, Create a namespace
+> kubectl create namespace dev
+4. label the namespace
+>kubectl label namespace/dev purpose=dev
+>kubectl get namespace
+>kubectl describe namespace dev
+5. Ctreate a pod in dev namespace with label : app=webapp
+>kubectl run backend --image=nginx --labels app=webapp,role=backend --namespace dev --expose --port 80 --generator=run-pod/v1
+>kubectl get pods --namespace=dev
+--you will see one pod up and running
+---Now create another pod to access this nginx pod via port 80
+--For this we will create an alpine pod and exec it command shell and try to access another pod (nginx 80)
+>kubectl run --rm -it --image=alpine newtork-policy --namespace dev --generator =run-pod/v1
+# wget -q0- http://backend
+welcome to nginx
+--you will be able to see the nginx page
+---------------Now create a n/w policy with no ingress for dev namespace and match lable- app=webapp and role=backend
+# exit  
+>vi backened-policy.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: demo-policy
+  namespace: dev
+spec:
+  podSelector:
+    matchLabels:
+      app: webapp
+      role: backend
+  ingress:[]
+
+:wq (out of vi)
+
+>kubectl apply -f backend-policy.yaml
+------Now call the nginx 80 page from another pod using alpine client-it should allow
+>kubectl run --rm -it --image=alpine newtork-policy --namespace dev --generator =run-pod/v1
+# wget -q0- http://backend
+Timeout error
+# exit
+----Change the netwrok policy------and add ingress info-
+>vi backend-policy.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: demo-policy
+  namespace: dev
+spec:
+  podSelector:
+    matchLabels:
+      app: webapp
+      role: backend
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: webapp
+          role: frontend
+    ports:
+    - port: 80
+      protocol: TCP
+
+qa
+>kubectl apply -f backend-policy.yaml
+---Run the alpine pod with some modification (app and role as per newtwork policy)
+>kubectl run --rm -it frontend --image=alpine --labels app=webapp,role=frontend  --namespace dev --generator =run-pod/v1
+# wget -q0- http://backend
+nginx page
+Enjoy!!!!!
+--You can also apply n/w policy based on namespace too
+---------------------------------------------------------------------------------------------------------------------------------------
+
+************Ingress Http Routing***************https://www.youtube.com/watch?v=gA0pgkNJyUs&list=PL2rqVLfBxq_jK6zRibdPoQo4fQDarisNB&index=24
+  1 AKS HTTp App Routing------
+> az aks create --resource-group aks-rsg --name akscluster --enable-addons http_application_routing
+> az aks --enable-addons --resource-group aks-rsg --name akscluster --addons http_application_routing
+If creating from portal, check  yes from Networking section
+Now get credential
+> az aks get-credentials --resource-group aks_rsg --name akscluster
+-Now get the DNS information/DNS Zone name (Also check from portal)
+>az aks show --resource-group aks-rsg --name akscluster --query addonProfiles.httpApplicationRouting.config.HTTPApplicationRoutingZoneName -o table
+sdjndjgjcsnjdf***.westus.aks.io 
+>Now run a yaml file having one deployment (any app), one service as ClusterIP and one ingress
+https://learn.microsoft.com/en-us/azure/aks/http-application-routing
+samples-http-application-routing.yaml -> change DNS Zone Name
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aks-helloworld  
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aks-helloworld
+  template:
+    metadata:
+      labels:
+        app: aks-helloworld
+    spec:
+      containers:
+      - name: aks-helloworld
+        image: mcr.microsoft.com/azuredocs/aks-helloworld:v1
+        ports:
+        - containerPort: 80
+        env:
+        - name: TITLE
+          value: "Welcome to Azure Kubernetes Service (AKS)"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aks-helloworld  
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+  selector:
+    app: aks-helloworld
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: aks-helloworld
+  annotations:
+    kubernetes.io/ingress.class: addon-http-application-routing
+spec:
+  rules:
+  - host: aks-helloworld.sdjndjgjcsnjdf***.westus.aks.io  
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service: 
+            name: aks-helloworld
+            port: 
+              number: 80
+> kubectl apply -f samples-http-application-routing.yaml
+>curl aks-helloworld.sdjndjgjcsnjdf***.westus.aks.io
+or go to browser and hit-> aks-helloworld.sdjndjgjcsnjdf***.westus.aks.io
+>Now see the config map
+> kubectl get configmaps -n kube-system
+also
+kubectl get deployments --namespace kube-system
+kubectl get services --namespace kube-system
+kubectl get configmaps --namespace kube-system
+kubectl get secrets --namespace kube-system
+>
+
+	 
+
+
+
+
