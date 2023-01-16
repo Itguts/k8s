@@ -1,0 +1,2 @@
+1. Run basic Pod yaml
+>kubectl apply -f Pod.yaml
