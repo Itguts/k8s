@@ -118,7 +118,6 @@ kubectl set image deployment/<Deployment-Name> <Container-Name>=<Container-Image
 # Verify Rollout Status 
 >kubectl rollout status deployment/my-first-deployment
 >kubectl get deploy
->kubectl describe deploy my-first-deployment
 ### Verify Rollout History of a Deployment
 - **Observation:** We have the rollout history, so we can switch back to older revisions using 
 revision history available to us.  
