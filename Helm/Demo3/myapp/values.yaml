@@ -1,0 +1,15 @@
+appName: myhelmapp
+
+
+
+namespace: default
+replica: 2
+
+service:
+  name: myhelmapp-service
+  port: 80
+
+
+image:
+  name: stacksimplify/kubenginx
+  tag: 2.0.0
