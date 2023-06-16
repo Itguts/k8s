@@ -1,0 +1,12 @@
+appName: mydotnethelmapp
+
+namespace: default
+replica: 1
+
+service:
+  name: myhelmapp-service
+  port: 80
+
+image:
+  name: "itgutscontainer/dotnetwebapp"
+  tag: "1.0"

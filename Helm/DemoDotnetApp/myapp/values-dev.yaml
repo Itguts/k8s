@@ -1,0 +1,6 @@
+namespace: dev
+
+replica: 3
+
+service:
+  port:50005
